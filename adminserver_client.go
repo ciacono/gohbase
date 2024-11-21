@@ -20,6 +20,7 @@ import (
 type AdminServerClient interface {
 	GetRegionInfo(gr *hrpc.GetRegionInfo) (*pb.RegionInfo,
 		pb.GetRegionInfoResponse_CompactionState, error)
+	CompactRegion(cr *hrpc.CompactRegion) error
 }
 
 func NewAdminServerClient(zkquorum string, options ...Option) AdminServerClient {
@@ -73,4 +74,19 @@ func (c *client) GetRegionInfo(gr *hrpc.GetRegionInfo) (*pb.RegionInfo,
 	}
 
 	return res.GetRegionInfo(), res.GetCompactionState(), nil
+}
+
+// CompactRegion executes a compaction on the given region.
+func (c *client) CompactRegion(cr *hrpc.CompactRegion) error {
+	// TODO provide base.key to make sure it goes to the right regionserver.
+	// Or lookup to find which regionserver has the ID
+	pbmsg, err := c.SendRPC(cr) // TODO replace SendRPC
+	if err != nil {
+		return err
+	}
+	_, ok := pbmsg.(*pb.CompactRegionResponse)
+	if !ok {
+		return errors.New("SendPRC did not return a CompactRegionResponse")
+	}
+	return nil
 }

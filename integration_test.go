@@ -2848,3 +2848,23 @@ func scanMetaForRegion(c gohbase.Client, t *testing.T) []byte {
 	regionName = regionName[len(regionName)-33 : len(regionName)-1]
 	return regionName
 }
+
+// TestCompactRegion sanity checks CompactRegion
+func TestCompactRegion(t *testing.T) {
+	var (
+		c   = gohbase.NewClient(*host)
+		ac  = gohbase.NewAdminServerClient(*host)
+		ctx = context.Background()
+	)
+
+	rn := scanMetaForRegion(c, t)
+	cr, err := hrpc.NewCompactRegionEncoded(ctx, rn, []byte(table), hrpc.WithMajor(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// TODO replace SendRPC
+	if err = ac.CompactRegion(cr); err != nil {
+		t.Fatal(err)
+	}
+}
