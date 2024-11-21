@@ -55,6 +55,20 @@ func (mr *MockAdminClientMockRecorder) ClusterStatus() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClusterStatus", reflect.TypeOf((*MockAdminClient)(nil).ClusterStatus))
 }
 
+// CompactRegion mocks base method.
+func (m *MockAdminClient) CompactRegion(arg0 *hrpc.CompactRegion) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CompactRegion", arg0)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CompactRegion indicates an expected call of CompactRegion.
+func (mr *MockAdminClientMockRecorder) CompactRegion(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CompactRegion", reflect.TypeOf((*MockAdminClient)(nil).CompactRegion), arg0)
+}
+
 // CreateSnapshot mocks base method.
 func (m *MockAdminClient) CreateSnapshot(arg0 *hrpc.Snapshot) error {
 	m.ctrl.T.Helper()

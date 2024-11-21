@@ -40,6 +40,7 @@ type AdminClient interface {
 	SetBalancer(sb *hrpc.SetBalancer) (bool, error)
 	// MoveRegion moves a region to a different RegionServer
 	MoveRegion(mr *hrpc.MoveRegion) error
+	CompactRegion(mr *hrpc.CompactRegion) error
 }
 
 // NewAdminClient creates an admin HBase client.
@@ -312,4 +313,17 @@ func (c *client) GetRegionInfo(gr *hrpc.GetRegionInfo) (*pb.RegionInfo,
 	}
 
 	return res.GetRegionInfo(), res.GetCompactionState(), nil
+}
+
+// CompactRegion executes a compaction on the given region.
+func (c *client) CompactRegion(cr *hrpc.CompactRegion) error {
+	pbmsg, err := c.SendRPC(cr)
+	if err != nil {
+		return err
+	}
+	_, ok := pbmsg.(*pb.CompactRegionResponse)
+	if !ok {
+		return errors.New("SendPRC did not return a CompactRegionResponse")
+	}
+	return nil
 }
