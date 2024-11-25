@@ -295,3 +295,21 @@ func (c *client) MoveRegion(mr *hrpc.MoveRegion) error {
 	}
 	return nil
 }
+
+// GetRegionInfo gets the region info for the given region.
+// Current compaction state can be requested as well via the WithCompactionState option for the
+// GetRegionInfo request.
+func (c *client) GetRegionInfo(gr *hrpc.GetRegionInfo) (*pb.RegionInfo,
+	pb.GetRegionInfoResponse_CompactionState, error) {
+
+	pbmsg, err := c.SendRPC(gr)
+	if err != nil {
+		return nil, 0, err
+	}
+	res, ok := pbmsg.(*pb.GetRegionInfoResponse)
+	if !ok {
+		return nil, 0, errors.New("sendPRC returned not a GetRegionInfoResponse")
+	}
+
+	return res.GetRegionInfo(), res.GetCompactionState(), nil
+}

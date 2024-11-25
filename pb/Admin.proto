@@ -28,6 +28,24 @@ option go_package = "../pb";
 
 import "HBase.proto";
 
+message GetRegionInfoRequest {
+  required RegionSpecifier region = 1;
+  optional bool compaction_state = 2;
+}
+
+message GetRegionInfoResponse {
+  required RegionInfo region_info = 1;
+  optional CompactionState compaction_state = 2;
+  optional bool isRecovering = 3;
+
+  enum CompactionState {
+    NONE = 0;
+    MINOR = 1;
+    MAJOR = 2;
+    MAJOR_AND_MINOR = 3;
+  }
+}
+
 /**
  * Compacts the specified region.  Performs a major compaction if specified.
  * <p>
@@ -45,4 +63,7 @@ message CompactRegionResponse {
 service AdminService {
   rpc CompactRegion(CompactRegionRequest)
     returns(CompactRegionResponse);
+
+  rpc GetRegionInfo(GetRegionInfoRequest)
+      returns(GetRegionInfoResponse);
 }
