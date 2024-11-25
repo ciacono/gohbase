@@ -6,8 +6,11 @@
 package gohbase
 
 import (
+	"errors"
 	"log/slog"
 
+	"github.com/tsuna/gohbase/hrpc"
+	"github.com/tsuna/gohbase/pb"
 	"github.com/tsuna/gohbase/region"
 	"github.com/tsuna/gohbase/zk"
 )
@@ -15,6 +18,8 @@ import (
 // AdminServerClient is a HBase client that performs Admin Service functions
 // TODO - naming
 type AdminServerClient interface {
+	GetRegionInfo(gr *hrpc.GetRegionInfo) (*pb.RegionInfo,
+		pb.GetRegionInfoResponse_CompactionState, error)
 }
 
 func NewAdminServerClient(zkquorum string, options ...Option) AdminServerClient {
@@ -50,4 +55,22 @@ func newAdminServerClient(zkquorum string, options ...Option) AdminServerClient 
 
 	c.zkClient = zk.NewClient(zkquorum, c.zkTimeout, c.zkDialer, c.logger)
 	return c
+}
+
+// GetRegionInfo gets the region info for the given region.
+// Current compaction state can be requested as well via the WithCompactionState option for the
+// GetRegionInfo request.
+func (c *client) GetRegionInfo(gr *hrpc.GetRegionInfo) (*pb.RegionInfo,
+	pb.GetRegionInfoResponse_CompactionState, error) {
+	// TODO don't use SendRPC
+	pbmsg, err := c.SendRPC(gr)
+	if err != nil {
+		return nil, 0, err
+	}
+	res, ok := pbmsg.(*pb.GetRegionInfoResponse)
+	if !ok {
+		return nil, 0, errors.New("sendPRC returned not a GetRegionInfoResponse")
+	}
+
+	return res.GetRegionInfo(), res.GetCompactionState(), nil
 }
