@@ -2396,43 +2396,13 @@ func TestMoveRegion(t *testing.T) {
 	c := gohbase.NewClient(*host)
 	ac := gohbase.NewAdminClient(*host)
 
-	// scan meta to get a region to move
-	scan, err := hrpc.NewScan(context.Background(),
-		[]byte("hbase:meta"),
-		hrpc.Families(map[string][]string{"info": []string{"regioninfo"}}))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	var rsp []*hrpc.Result
-	scanner := c.Scan(scan)
-	for {
-		res, err := scanner.Next()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			t.Fatal(err)
-		}
-		rsp = append(rsp, res)
-	}
-
-	// use the first region
-	if len(rsp) == 0 {
-		t.Fatal("got 0 results")
-	}
-	if len(rsp[0].Cells) == 0 {
-		t.Fatal("got 0 cells")
-	}
-
-	regionName := rsp[0].Cells[0].Row
-	regionName = regionName[len(regionName)-33 : len(regionName)-1]
+	regionName := scanMetaForRegion(c, t)
 	mr, err := hrpc.NewMoveRegion(context.Background(), regionName)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if err := ac.MoveRegion(mr); err != nil {
+	if err = ac.MoveRegion(mr); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -2811,4 +2781,70 @@ func TestScannerRenewalCancellation(t *testing.T) {
 	if err != context.Canceled {
 		t.Fatalf("Expected context.Canceled error, got: %v", err)
 	}
+}
+
+func TestGetRegionInfo(t *testing.T) {
+	var (
+		c   = gohbase.NewClient(*host)
+		ac  = gohbase.NewAdminServerClient(*host)
+		ctx = context.Background()
+	)
+
+	rn := scanMetaForRegion(c, t)
+	rs := &pb.RegionSpecifier{
+		Type:  pb.RegionSpecifier_ENCODED_REGION_NAME.Enum(),
+		Value: rn,
+	}
+
+	gri, err := hrpc.NewGetRegionInfo(ctx, rs, hrpc.WithCompactionState(true))
+	if err != nil {
+		t.Fatalf("Failed to create GetRegionInfo: %v", err)
+	}
+
+	var ri *pb.RegionInfo
+	var cs pb.GetRegionInfoResponse_CompactionState
+	ri, cs, err = ac.GetRegionInfo(gri) // TODO don't use SendRPC
+	if err != nil {
+		t.Fatalf("Failed to get region info: %v", err)
+	}
+	t.Logf("Got region info: %s", ri.String())
+	t.Logf("Got compaction state: %v", cs)
+}
+
+// scanMetaForRegion is a helper function that scans meta to find a region.
+// Returns the encoded region name, equivalent to pb.RegionSpecifier_ENCODED_REGION_NAME
+func scanMetaForRegion(c gohbase.Client, t *testing.T) []byte {
+	// scan meta to get a region to move
+	scan, err := hrpc.NewScan(context.Background(),
+		[]byte("hbase:meta"),
+		hrpc.Families(map[string][]string{"info": []string{"regioninfo"}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var rsp []*hrpc.Result
+	scanner := c.Scan(scan)
+	for {
+		var res *hrpc.Result
+		res, err = scanner.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		rsp = append(rsp, res)
+	}
+
+	// use the first region
+	if len(rsp) == 0 {
+		t.Fatal("got 0 results")
+	}
+	if len(rsp[0].Cells) == 0 {
+		t.Fatal("got 0 cells")
+	}
+
+	regionName := rsp[0].Cells[0].Row
+	regionName = regionName[len(regionName)-33 : len(regionName)-1]
+	return regionName
 }
