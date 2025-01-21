@@ -6,7 +6,9 @@
 package gohbase
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 
 	"github.com/tsuna/gohbase/hrpc"
@@ -21,6 +23,8 @@ type AdminServerClient interface {
 	GetRegionInfo(gr *hrpc.GetRegionInfo) (*pb.RegionInfo,
 		pb.GetRegionInfoResponse_CompactionState, error)
 	CompactRegion(cr *hrpc.CompactRegion) error
+	GetLastMajorCompactionTimestamp(lr *hrpc.LastMajorCompaction) (int64, error)
+	Compact(ctx context.Context, table []byte) error
 }
 
 func NewAdminServerClient(zkquorum string, options ...Option) AdminServerClient {
@@ -88,5 +92,58 @@ func (c *client) CompactRegion(cr *hrpc.CompactRegion) error {
 	if !ok {
 		return errors.New("SendPRC did not return a CompactRegionResponse")
 	}
+	return nil
+}
+
+// GetLastMajorCompactionTimestamp gets the timestamp of the last major compaction for the
+// given table. The timestamp is for the oldest HFile resulting from a major compaction of that
+// table, or 0 if there are no such HFiles for that table.
+func (c *client) GetLastMajorCompactionTimestamp(lr *hrpc.LastMajorCompaction) (int64, error) {
+	// TODO java.lang.UnsupportedOperationExceptionF
+	// TODO probably don't need this one, can get with ClusterStatus
+	pbmsg, err := c.SendRPC(lr)
+	if err != nil {
+		return 0, err
+	}
+	res, ok := pbmsg.(*pb.MajorCompactionTimestampResponse)
+	if !ok {
+		return 0, errors.New("sendPRC returned not a MajorCompactionTimestampResponse")
+	}
+	return res.GetCompactionTimestamp(), nil
+}
+
+// Compact performs a major compaction on the given table
+func (c *client) Compact(ctx context.Context, table []byte) error {
+	// Internal client to access meta:
+	// TODO refactor this
+	metaClient := newClient("TODO", RpcQueueSize(1))
+	defer metaClient.Close()
+
+	risAndAddrs, err := metaClient.findAllRegions(ctx, table)
+	if err != nil {
+		return fmt.Errorf("error finding all regions for table %v : %w", table, err)
+	}
+	c.logger.Debug(fmt.Sprintf("Found %d regions to compact for table %s", len(risAndAddrs),
+		string(table)))
+
+	// The HBase protobuf API only exposes CompactRegion currently, so need to send a CompactRegion
+	// request for each region in the table.
+	// TODO use SendBatch for all the Compacts?
+	var cr *hrpc.CompactRegion
+	for _, ria := range risAndAddrs {
+		cr, err = hrpc.NewCompactRegion(ctx, ria.regionInfo.Name(), table,
+			hrpc.WithMajor(true))
+		if err != nil {
+			return err
+		}
+		// TODO retryable?
+		err = c.CompactRegion(cr) // TODO java.lang.UnsupportedOperationException
+		if err != nil {
+			return fmt.Errorf("error compacting region %v in table %v, error: %w",
+				ria.regionInfo.Name(), table, err)
+		}
+		c.logger.Debug("SUCCESS Compacted a region")
+	}
+
 	return nil
 }

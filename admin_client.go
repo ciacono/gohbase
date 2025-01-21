@@ -21,7 +21,7 @@ import (
 const (
 	// snapshotValidateInterval specifies the amount of time to wait before
 	// polling the hbase server about the status of a snapshot operation.
-	snaphotValidateInterval time.Duration = time.Second / 2
+	snapshotValidateInterval time.Duration = time.Second / 2
 )
 
 // AdminClient to perform administrative operations with HMaster
@@ -186,7 +186,7 @@ func (c *client) CreateSnapshot(t *hrpc.Snapshot) error {
 		return errors.New("sendPRC returned not a SnapshotResponse")
 	}
 
-	ticker := time.NewTicker(snaphotValidateInterval)
+	ticker := time.NewTicker(snapshotValidateInterval)
 	defer ticker.Stop()
 	check := hrpc.NewSnapshotDone(t)
 	ctx := t.Context()
