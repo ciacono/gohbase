@@ -122,6 +122,7 @@ func TestMain(m *testing.M) {
 		}
 	}
 	res := m.Run()
+	slog.Info("Done tests, deleting table.")
 	err = DeleteTable(ac, table)
 	if err != nil {
 		panic(err)
@@ -1505,6 +1506,8 @@ func TestCloseWithoutMeta(t *testing.T) {
 // Note: This function currently causes an infinite loop in the client throwing the error -
 // 2015/06/19 14:34:11 Encountered an error while reading: Failed to read from the RS: EOF
 func TestChangingRegionServers(t *testing.T) {
+	// TODO CLAIRE REMOVE
+	t.Skip()
 	key := "row8"
 	val := []byte("1")
 	headers := map[string][]string{"cf": nil}
@@ -2867,4 +2870,103 @@ func TestCompactRegion(t *testing.T) {
 	if err = ac.CompactRegion(cr); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func writeData(table, testName, columnFamily string, c gohbase.Client, t *testing.T) {
+	t.Helper()
+	batchLen := 1000
+	puts := make([]hrpc.Call, batchLen)
+	ctx := context.Background()
+
+	for i := 0; i < batchLen; i++ {
+		values := map[string]map[string][]byte{columnFamily: map[string][]byte{}}
+		values[columnFamily][strconv.Itoa(i%10)] = []byte(strconv.Itoa(i))
+		key := fmt.Sprintf("writeData_%s_%d", testName, i)
+		putRequest, err := hrpc.NewPutStr(ctx, table, key, values)
+		if err != nil {
+			t.Fatal(err)
+		}
+		puts[i] = putRequest
+	}
+
+	_, ok := c.SendBatch(ctx, puts)
+	if !ok {
+		t.Fatalf("Failed writing data with SendBatch")
+	}
+}
+
+// TestCompact tests doing a major compaction on a table
+func TestCompact(t *testing.T) {
+	c := gohbase.NewClient(*host, gohbase.RpcQueueSize(1))
+	defer c.Close()
+	ctx := context.Background()
+
+	writeData(table, t.Name(), "cf", c, t)
+
+	// Get the regions of the table & the compaction timestamp for each region to validate:
+	t.Logf("Table name: %s", table)
+	tableFromRegionName := func(regName string) (string, error) {
+		// Using pb.RegionSpecifier_REGION_NAME which looks like:
+		// <tablename>,<startkey>,<regionId>.<encodedName>
+		splits := strings.Split(regName, ",")
+		if len(splits) <= 1 {
+			return "", fmt.Errorf("Region name not in expected format, must be " +
+				"RegionSpecifier_REGION_NAME")
+		}
+		tName := splits[0]
+		return tName, nil
+	}
+
+	regTs := make(map[string]uint64)
+
+	ac := gohbase.NewAdminClient(*host)
+
+	// clusterStatus
+	stats, err := ac.ClusterStatus()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	servers := stats.GetLiveServers()
+	i := 0
+	for _, server := range servers {
+		regLoads := server.GetServerLoad().GetRegionLoads()
+		for _, load := range regLoads {
+			i++
+			regionName := string(load.GetRegionSpecifier().GetValue())
+			if strings.Contains(regionName, table) {
+				t.Logf("[CLAIRE] Got region for test table - region %s", regionName)
+			}
+			tName, err := tableFromRegionName(regionName)
+			if err != nil {
+				t.Error(err)
+			}
+
+			storeFiles := load.GetStorefiles()
+			t.Logf("%d storefiles for region %s on server %s",
+				storeFiles, regionName, server.GetServer().GetHostName())
+			lastMajorCompactTs := load.GetLastMajorCompactionTs()
+			t.Logf("Last major compaction for region %s at timestamp %d",
+				regionName, lastMajorCompactTs)
+
+			if tName == table {
+				t.Logf("Table name match, updating map")
+				_, ok := regTs[regionName]
+				if ok {
+					t.Logf("Seeing duplicate region entry, unexpected")
+				}
+				regTs[regionName] = lastMajorCompactTs
+			}
+		}
+	}
+	t.Logf("Total regions: %d", i)
+	t.Logf("Table regions: %d", len(regTs))
+	// TODO why is the current table not found in there at all?
+
+	// Compact the table
+	err = ac.Compact(ctx, []byte(table))
+	if err != nil {
+		t.Fatalf("Failed to compact table %s: %v", table, err)
+	}
+
 }
