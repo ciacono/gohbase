@@ -106,6 +106,20 @@ func TestSendHello(t *testing.T) {
 		t.Errorf("Was expecting error, but got one: %#v", err)
 	}
 
+	// check if it sends the right "hello" for AdminServerClient:
+	c.ctype = AdminServerClient
+	mockConn.EXPECT().Write(gomock.Any()).Return(78, nil).Times(1).Do(func(buf []byte) {
+		expected := []byte("HBas\x00P\x00\x00\x00C\n\x06\n\x04root\x12\fAdminService\x1a+" +
+			"org.apache.hadoop.hbase.codec.KeyValueCodec")
+		if !bytes.Equal(expected, buf) {
+			t.Errorf("expected \n%v\n got \n%v\n", expected, buf)
+		}
+	})
+	err = c.sendHello()
+	if err != nil {
+		t.Errorf("Was expecting error, but got one: %#v", err)
+	}
+
 	c.compressor = &compressor{Codec: mockCodec{}}
 	// check if compressor is getting sent
 	c.ctype = RegionClient
