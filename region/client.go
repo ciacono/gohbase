@@ -98,6 +98,10 @@ const (
 	// MasterClient is a ClientType that means this client will talk to the
 	// master server
 	MasterClient = ClientType("MasterService")
+
+	// AdminServerClient is a ClientType where the client will perform Admin
+	// Service functions
+	AdminServerClient = ClientType("AdminService")
 )
 
 var bufferPool sync.Pool
